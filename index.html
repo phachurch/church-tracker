@@ -1231,31 +1231,42 @@
                 source = 'zelle';
             }
 
-            // Patterns for all sources
+            // More precise patterns - capture name before extra text
             const patterns = [
-                /(?:received|got|sent you)\s+\$?([\d,]+\.?\d*)\s+(?:from|by)\s+([A-Za-z\s]+?)(?:\s+on\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?/gi,
-                /([A-Za-z\s]+?)\s+sent\s+you\s+\$?([\d,]+\.?\d*)\s*(?:on\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?/gi,
-                /payment\s+of\s+\$?([\d,]+\.?\d*)\s+from\s+([A-Za-z\s]+?)(?:\s+on\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?/gi,
-                /\$?([\d,]+\.?\d*)\s+from\s+([A-Za-z\s]+)/gi,
-                /([A-Za-z\s]+?)\s+paid\s+you\s+\$?([\d,]+\.?\d*)/gi,
-                /you\s+received\s+\$?([\d,]+\.?\d*)\s+from\s+([A-Za-z\s]+)/gi,
-                /(?:new\s+)?donation[:\s]+\$?([\d,]+\.?\d*)\s+from\s+([A-Za-z\s]+?)(?:\s+on\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?/gi,
-                /([A-Za-z\s]+?)\s+(?:gave|donated)\s+\$?([\d,]+\.?\d*)/gi,
-                /contribution\s+of\s+\$?([\d,]+\.?\d*)\s+(?:from|by)\s+([A-Za-z\s]+)/gi
+                // "John Doe sent you $50" or "You received $50 from John Doe"
+                /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+sent\s+you\s+\$?([\d,]+\.?\d*)/gi,
+                /you\s+received\s+\$?([\d,]+\.?\d*)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+                /\$?([\d,]+\.?\d*)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*(?:was|has|on)/gi,
+                
+                // "Payment of $50 from John Doe" 
+                /payment\s+of\s+\$?([\d,]+\.?\d*)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+                
+                // CashApp style: "$50 from John Doe"
+                /\$?([\d,]+\.?\d*)\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+                
+                // "John Doe paid you $25"
+                /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+paid\s+you\s+\$?([\d,]+\.?\d*)/gi
             ];
 
             patterns.forEach(pattern => {
                 let match;
                 while ((match = pattern.exec(fullText)) !== null) {
-                    const amount = parseFloat(match[1].replace(/,/g, ''));
-                    const name = match[2].trim();
-                    const date = match[3] || new Date().toISOString().split('T')[0];
+                    let amount, name;
                     
-                    if (amount > 0 && name && name.length > 2) {
+                    // Pattern might have amount first or second depending on structure
+                    if (match[1] && !isNaN(parseFloat(match[1].replace(/,/g, '')))) {
+                        amount = parseFloat(match[1].replace(/,/g, ''));
+                        name = match[2];
+                    } else {
+                        name = match[1];
+                        amount = parseFloat(match[2].replace(/,/g, ''));
+                    }
+                    
+                    if (amount > 0 && name && name.trim().length > 2) {
                         transactions.push({
                             name: cleanName(name),
                             amount: amount,
-                            date: parseDate(date),
+                            date: new Date().toISOString().split('T')[0],
                             source: source
                         });
                     }
@@ -1267,9 +1278,24 @@
 
         // Clean name
         function cleanName(name) {
+            // Remove common bank/payment phrases
+            name = name.replace(/was deposited in your account/gi, '');
+            name = name.replace(/deposited in your account/gi, '');
+            name = name.replace(/sent you money/gi, '');
+            name = name.replace(/sent you a payment/gi, '');
+            name = name.replace(/paid you/gi, '');
+            name = name.replace(/sent payment/gi, '');
+            name = name.replace(/via zelle/gi, '');
+            name = name.replace(/via cash app/gi, '');
+            
+            // Remove non-alphabetic characters except spaces
+            name = name.replace(/[^a-zA-Z\s]/g, '');
+            
+            // Trim and normalize spaces
+            name = name.trim().replace(/\s+/g, ' ');
+            
+            // Capitalize first letter of each word
             return name
-                .replace(/[^a-zA-Z\s]/g, '')
-                .trim()
                 .split(/\s+/)
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                 .join(' ');
