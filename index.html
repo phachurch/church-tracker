@@ -966,17 +966,67 @@
                 return;
             }
 
-            const data = contributions.map(c => ({
-                'Date': new Date(c.date).toLocaleDateString(),
-                'Name': c.name,
-                'Source': c.source.toUpperCase(),
-                'Amount': c.amount
-            }));
+            // Group contributions by month
+            const byMonth = {};
+            contributions.forEach(c => {
+                const date = new Date(c.date);
+                const monthKey = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                
+                if (!byMonth[monthKey]) {
+                    byMonth[monthKey] = [];
+                }
+                byMonth[monthKey].push(c);
+            });
 
+            // Create workbook
             const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(data);
-            XLSX.utils.book_append_sheet(wb, ws, 'Contributions');
-            XLSX.writeFile(wb, `PHA_Church_Contributions_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+            // Add a tab for each month
+            Object.keys(byMonth).sort((a, b) => {
+                const dateA = new Date(byMonth[a][0].date);
+                const dateB = new Date(byMonth[b][0].date);
+                return dateB - dateA; // Newest first
+            }).forEach(monthKey => {
+                const monthData = byMonth[monthKey].map(c => ({
+                    'Date': new Date(c.date).toLocaleDateString(),
+                    'Name': c.name,
+                    'Source': c.source.toUpperCase(),
+                    'Amount': c.amount
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(monthData);
+                
+                // Set column widths
+                ws['!cols'] = [
+                    { wch: 12 },
+                    { wch: 25 },
+                    { wch: 12 },
+                    { wch: 12 }
+                ];
+
+                // Add sheet with month name (max 31 chars for Excel)
+                const sheetName = monthKey.substring(0, 31);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            });
+
+            // Add summary tab
+            const summaryData = Object.keys(byMonth).map(monthKey => {
+                const total = byMonth[monthKey].reduce((sum, c) => sum + c.amount, 0);
+                const count = byMonth[monthKey].length;
+                return {
+                    'Month': monthKey,
+                    'Total Contributions': total,
+                    'Number of Transactions': count
+                };
+            });
+
+            const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+            summaryWs['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 25 }];
+            XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+            // Download
+            const filename = `PHA_Church_Contributions_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, filename);
         }
 
         function clearAllData() {
