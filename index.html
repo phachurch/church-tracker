@@ -1206,12 +1206,29 @@
             const transactions = [];
             const fullText = subject + ' ' + text;
             
-            // Determine source
-            let source = 'zelle';
-            if (fullText.toLowerCase().includes('cash app') || fullText.toLowerCase().includes('cashapp') || fullText.toLowerCase().includes('square')) {
+            // Determine source based on sender/email content - be more specific
+            let source = 'zelle'; // Default to Zelle
+            
+            const lowerText = fullText.toLowerCase();
+            
+            // Check for CashApp first (most specific)
+            if (lowerText.includes('cash app') || 
+                lowerText.includes('cashapp') || 
+                lowerText.includes('cash.app') ||
+                lowerText.includes('from square') || 
+                lowerText.includes('cash@square')) {
                 source = 'cashapp';
-            } else if (fullText.toLowerCase().includes('tithly') || fullText.toLowerCase().includes('tithe')) {
+            }
+            // Check for Tithly - only if explicitly from Tithly platform
+            else if ((lowerText.includes('tithly') || lowerText.includes('tithe.ly')) && 
+                     !lowerText.includes('subscription')) {
                 source = 'tithly';
+            }
+            // Check for Zelle indicators
+            else if (lowerText.includes('zelle') || 
+                     lowerText.includes('usbank') || 
+                     lowerText.includes('notifications.usbank')) {
+                source = 'zelle';
             }
 
             // Patterns for all sources
