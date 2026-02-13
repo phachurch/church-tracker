@@ -818,8 +818,16 @@
                 spreadsheetId = response.result.spreadsheetId;
                 localStorage.setItem('spreadsheetId', spreadsheetId);
 
+                // Wait a moment for sheet to be fully created
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
                 // Add headers
-                await setupSpreadsheetHeaders();
+                try {
+                    await setupSpreadsheetHeaders();
+                } catch (headerError) {
+                    console.error('Error setting up headers:', headerError);
+                    // Continue anyway - headers can be added manually
+                }
                 
                 updateSheetsInfo();
                 showMessage('success', 'New Google Sheet created successfully!');
@@ -880,17 +888,22 @@
                 document.getElementById('sheetsInfo').style.display = 'block';
             }
         }
-// Sync to Google Sheets
+
+        // Sync to Google Sheets
         async function syncToGoogleSheets(newContributions) {
             if (!spreadsheetId || !accessToken) {
+                console.log('No spreadsheet or token');
                 return;
             }
 
             if (newContributions.length === 0) {
+                console.log('No new contributions to sync');
                 return;
             }
 
             try {
+                console.log('Starting sync to Google Sheets...');
+                
                 // Get current sheet data
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: spreadsheetId,
@@ -899,6 +912,8 @@
 
                 const existingData = response.result.values || [['Name', 'Total']];
                 const headers = existingData[0] || ['Name', 'Total'];
+                
+                console.log('Existing data rows:', existingData.length);
                 
                 // Build a map of existing contributors (name -> row index)
                 const contributorRows = {};
@@ -918,19 +933,18 @@
                     contributionsByName[c.name].push(c);
                 });
 
+                console.log('Processing contributions for', Object.keys(contributionsByName).length, 'people');
+
                 // Process each contributor
-                const updates = [];
-                
                 for (const [name, contribs] of Object.entries(contributionsByName)) {
                     let rowIndex = contributorRows[name];
-                    let isNewRow = false;
                     
                     // If contributor doesn't exist, add new row
                     if (rowIndex === undefined) {
                         rowIndex = existingData.length;
                         existingData.push([name, 0]);
                         contributorRows[name] = rowIndex;
-                        isNewRow = true;
+                        console.log('Added new row for:', name);
                     }
 
                     // Get or create the row data
@@ -950,6 +964,7 @@
                             // Add new column header
                             colIndex = headers.length;
                             headers.push(columnHeader);
+                            console.log('Added new column:', columnHeader);
                             
                             // Extend all rows to include new column
                             existingData.forEach(row => {
@@ -968,7 +983,7 @@
                         }
                     });
 
-                    // Calculate total for this person (sum all contribution columns, skip Name and Total columns)
+                    // Calculate total for this person
                     let total = 0;
                     for (let i = 2; i < rowData.length; i++) {
                         const val = parseFloat(rowData[i]);
@@ -976,18 +991,22 @@
                             total += val;
                         }
                     }
-                    rowData[1] = total; // Update Total column
+                    rowData[1] = total;
 
                     // Update the row in existingData
                     existingData[rowIndex] = rowData;
                 }
 
-                // Clear and rewrite entire sheet
+                console.log('Clearing old data...');
+                
+                // Clear sheet
                 await gapi.client.sheets.spreadsheets.values.clear({
                     spreadsheetId: spreadsheetId,
                     range: sheetName + '!A:ZZ'
                 });
 
+                console.log('Writing new data...');
+                
                 // Write updated data
                 await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: spreadsheetId,
@@ -996,37 +1015,46 @@
                     resource: { values: existingData }
                 });
 
+                console.log('Formatting headers...');
+                
                 // Re-format header row
-                await gapi.client.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId: spreadsheetId,
-                    resource: {
-                        requests: [{
-                            repeatCell: {
-                                range: {
-                                    sheetId: 0,
-                                    startRowIndex: 0,
-                                    endRowIndex: 1
-                                },
-                                cell: {
-                                    userEnteredFormat: {
-                                        backgroundColor: { red: 0.4, green: 0.49, blue: 0.92 },
-                                        textFormat: {
-                                            foregroundColor: { red: 1, green: 1, blue: 1 },
-                                            fontSize: 11,
-                                            bold: true
+                try {
+                    await gapi.client.sheets.spreadsheets.batchUpdate({
+                        spreadsheetId: spreadsheetId,
+                        resource: {
+                            requests: [{
+                                repeatCell: {
+                                    range: {
+                                        sheetId: 0,
+                                        startRowIndex: 0,
+                                        endRowIndex: 1
+                                    },
+                                    cell: {
+                                        userEnteredFormat: {
+                                            backgroundColor: { red: 0.4, green: 0.49, blue: 0.92 },
+                                            textFormat: {
+                                                foregroundColor: { red: 1, green: 1, blue: 1 },
+                                                fontSize: 11,
+                                                bold: true
+                                            }
                                         }
-                                    }
-                                },
-                                fields: 'userEnteredFormat(backgroundColor,textFormat)'
-                            }
-                        }]
-                    }
-                });
+                                    },
+                                    fields: 'userEnteredFormat(backgroundColor,textFormat)'
+                                }
+                            }]
+                        }
+                    });
+                } catch (formatError) {
+                    console.error('Error formatting (non-critical):', formatError);
+                    // Continue anyway - formatting is not critical
+                }
 
+                console.log('Sync complete!');
                 showMessage('success', `Updated Google Sheets with ${newContributions.length} contribution(s)!`);
             } catch (error) {
                 console.error('Error syncing to Sheets:', error);
-                showMessage('error', 'Failed to sync to Google Sheets: ' + error.message);
+                console.error('Error details:', error.result);
+                showMessage('error', 'Failed to sync to Google Sheets. Check console for details.');
             }
         }
 
@@ -1383,4 +1411,4 @@
     </script>
     <script src="https://apis.google.com/js/api.js"></script>
 </body>
-</html>		
+</html>
