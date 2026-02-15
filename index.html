@@ -301,6 +301,28 @@
                 </div>
             </div>
 
+            <!-- Google Sheets Export -->
+            <div class="section">
+                <h2>📊 Google Sheets Auto-Sync</h2>
+                <p style="color: #666; margin-bottom: 15px;">Automatically update your Google Sheet with contributions (Names as rows, Dates as columns)</p>
+                
+                <div class="connection-card" style="max-width: 600px;">
+                    <input type="text" id="spreadsheetId" placeholder="Google Spreadsheet ID or full URL" style="margin-bottom: 10px;">
+                    <small style="display: block; color: #666; margin-bottom: 15px;">
+                        Get this from your Google Sheet URL: docs.google.com/spreadsheets/d/<strong>SPREADSHEET_ID</strong>/edit
+                    </small>
+                    
+                    <button class="btn btn-primary" onclick="syncToGoogleSheets()" style="margin-right: 10px;">
+                        📤 Sync to Google Sheets Now
+                    </button>
+                    <button class="btn btn-secondary" onclick="setupAutoSync()">
+                        ⏰ Enable Daily Auto-Sync
+                    </button>
+                    
+                    <div id="sheetsStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
+                </div>
+            </div>
+
             <!-- Table -->
             <div class="section">
                 <h2>📊 Contributions</h2>
@@ -332,7 +354,8 @@
             </div>
         </div>
     </div>
-<script>
+
+    <script>
         let contributions = [];
         let plaidAccessToken = null;
         let tithlyApiKey = null;
@@ -697,6 +720,85 @@
                 document.getElementById('tithlyStatus').textContent = 'Connected';
                 document.getElementById('syncTithlyBtn').style.display = 'block';
             }
+            
+            // Load spreadsheet ID
+            const savedSpreadsheetId = localStorage.getItem('spreadsheetId');
+            if (savedSpreadsheetId) {
+                document.getElementById('spreadsheetId').value = savedSpreadsheetId;
+            }
+        }
+        
+        // Sync to Google Sheets
+        async function syncToGoogleSheets() {
+            if (contributions.length === 0) {
+                showSheetsStatus('error', 'No contributions to sync');
+                return;
+            }
+            
+            let spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+            
+            if (!spreadsheetId) {
+                showSheetsStatus('error', 'Please enter a Spreadsheet ID');
+                return;
+            }
+            
+            // Extract ID from URL if full URL provided
+            if (spreadsheetId.includes('spreadsheets/d/')) {
+                const match = spreadsheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                if (match) spreadsheetId = match[1];
+            }
+            
+            // Save spreadsheet ID
+            localStorage.setItem('spreadsheetId', spreadsheetId);
+            
+            try {
+                showSheetsStatus('info', 'Syncing to Google Sheets...');
+                
+                const response = await fetch('/.netlify/functions/sheets-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        spreadsheetId: spreadsheetId,
+                        contributions: contributions
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSheetsStatus('success', `✓ ${result.message}`);
+                    showMessage('success', 'Google Sheets updated successfully!');
+                } else {
+                    throw new Error(result.error || 'Sync failed');
+                }
+            } catch (error) {
+                showSheetsStatus('error', 'Sync failed: ' + error.message);
+                showMessage('error', 'Failed to sync to Google Sheets. Make sure the spreadsheet ID is correct and you\'ve shared it with the service account.');
+            }
+        }
+        
+        // Setup auto-sync
+        function setupAutoSync() {
+            const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+            
+            if (!spreadsheetId) {
+                showSheetsStatus('error', 'Please enter a Spreadsheet ID first');
+                return;
+            }
+            
+            localStorage.setItem('autoSyncEnabled', 'true');
+            localStorage.setItem('spreadsheetId', spreadsheetId);
+            
+            showSheetsStatus('success', '✓ Auto-sync enabled! Will sync daily at midnight.');
+            showMessage('success', 'Auto-sync enabled! Your data will sync to Google Sheets daily.');
+        }
+        
+        // Show sheets status message
+        function showSheetsStatus(type, msg) {
+            const statusDiv = document.getElementById('sheetsStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = `message ${type}`;
+            statusDiv.textContent = msg;
         }
         
         function clearData() {
