@@ -6,6 +6,7 @@
     <title>PHA Church Contribution Tracker</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -234,6 +235,41 @@
         <div class="content">
             <div id="messageArea"></div>
 
+            <!-- Google Sign-In Section -->
+            <div class="section" style="background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); color: white;">
+                <div id="signedOut" style="text-align: center;">
+                    <h2 style="color: white; margin-bottom: 15px;">🔐 Sign In with Google</h2>
+                    <p style="opacity: 0.9; margin-bottom: 20px;">Sign in to save your data and sync to Google Sheets</p>
+                    <div id="g_id_onload"
+                         data-client_id="914138873417-pqh9ospt8s8ur6ahb1iarr57ad53m06m.apps.googleusercontent.com"
+                         data-callback="handleCredentialResponse">
+                    </div>
+                    <div class="g_id_signin" 
+                         data-type="standard"
+                         data-size="large"
+                         data-theme="outline"
+                         data-text="sign_in_with"
+                         data-shape="rectangular"
+                         data-logo_alignment="left">
+                    </div>
+                </div>
+                
+                <div id="signedIn" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <img id="userPhoto" src="" alt="Profile" style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid white;">
+                            <div>
+                                <div style="font-size: 18px; font-weight: 600;" id="userName"></div>
+                                <div style="opacity: 0.9; font-size: 14px;" id="userEmail"></div>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" onclick="signOut()" style="width: auto;">
+                            Sign Out
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Summary -->
             <div class="summary-cards">
                 <div class="summary-card">
@@ -354,35 +390,80 @@
             </div>
         </div>
     </div>
-
     <script>
         let contributions = [];
         let plaidAccessToken = null;
         let tithlyApiKey = null;
+        let googleUser = null;
 
         // Load data
         document.addEventListener('DOMContentLoaded', function() {
             loadFromStorage();
             updateDisplay();
+            checkGoogleSignIn();
         });
+
+        // Google Sign-In
+        function handleCredentialResponse(response) {
+            // Decode JWT token
+            const base64Url = response.credential.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+
+            googleUser = JSON.parse(jsonPayload);
+            
+            // Save to localStorage
+            localStorage.setItem('googleUser', JSON.stringify(googleUser));
+            
+            // Update UI
+            updateGoogleSignInUI();
+            showMessage('success', 'Signed in as ' + googleUser.name);
+        }
+
+        function updateGoogleSignInUI() {
+            if (googleUser) {
+                document.getElementById('signedOut').style.display = 'none';
+                document.getElementById('signedIn').style.display = 'block';
+                document.getElementById('userName').textContent = googleUser.name;
+                document.getElementById('userEmail').textContent = googleUser.email;
+                document.getElementById('userPhoto').src = googleUser.picture;
+            } else {
+                document.getElementById('signedOut').style.display = 'block';
+                document.getElementById('signedIn').style.display = 'none';
+            }
+        }
+
+        function signOut() {
+            googleUser = null;
+            localStorage.removeItem('googleUser');
+            updateGoogleSignInUI();
+            showMessage('info', 'Signed out');
+        }
+
+        function checkGoogleSignIn() {
+            const saved = localStorage.getItem('googleUser');
+            if (saved) {
+                googleUser = JSON.parse(saved);
+                updateGoogleSignInUI();
+            }
+        }
 
         // Connect Bank via Plaid
         async function connectBank() {
             try {
                 showMessage('info', 'Connecting to Plaid...');
                 
-                // Get link token from Netlify function
                 const response = await fetch('/.netlify/functions/plaid-link', {
                     method: 'POST'
                 });
                 
                 const { link_token } = await response.json();
                 
-                // Open Plaid Link
                 const handler = Plaid.create({
                     token: link_token,
                     onSuccess: async (public_token) => {
-                        // Exchange token
                         const exchangeRes = await fetch('/.netlify/functions/plaid-exchange', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -629,7 +710,6 @@
             
             const wb = XLSX.utils.book_new();
             
-            // Add month tabs
             Object.keys(byMonth).sort((a, b) => new Date(byMonth[b][0].date) - new Date(byMonth[a][0].date)).forEach(month => {
                 const data = byMonth[month].map(c => ({
                     'Date': new Date(c.date).toLocaleDateString(),
@@ -643,7 +723,6 @@
                 XLSX.utils.book_append_sheet(wb, ws, month.substring(0, 31));
             });
             
-            // Add summary tab
             const summary = Object.keys(byMonth).map(month => ({
                 'Month': month,
                 'Total': byMonth[month].reduce((sum, c) => sum + c.amount, 0),
@@ -655,7 +734,6 @@
             
             XLSX.writeFile(wb, `PHA_Church_${new Date().toISOString().split('T')[0]}.xlsx`);
         }
-
         // Update Display
         function updateDisplay() {
             const total = contributions.reduce((sum, c) => sum + c.amount, 0);
@@ -721,7 +799,6 @@
                 document.getElementById('syncTithlyBtn').style.display = 'block';
             }
             
-            // Load spreadsheet ID
             const savedSpreadsheetId = localStorage.getItem('spreadsheetId');
             if (savedSpreadsheetId) {
                 document.getElementById('spreadsheetId').value = savedSpreadsheetId;
@@ -742,13 +819,11 @@
                 return;
             }
             
-            // Extract ID from URL if full URL provided
             if (spreadsheetId.includes('spreadsheets/d/')) {
                 const match = spreadsheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
                 if (match) spreadsheetId = match[1];
             }
             
-            // Save spreadsheet ID
             localStorage.setItem('spreadsheetId', spreadsheetId);
             
             try {
@@ -773,11 +848,10 @@
                 }
             } catch (error) {
                 showSheetsStatus('error', 'Sync failed: ' + error.message);
-                showMessage('error', 'Failed to sync to Google Sheets. Make sure the spreadsheet ID is correct and you\'ve shared it with the service account.');
+                showMessage('error', 'Failed to sync to Google Sheets');
             }
         }
         
-        // Setup auto-sync
         function setupAutoSync() {
             const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
             
@@ -789,11 +863,10 @@
             localStorage.setItem('autoSyncEnabled', 'true');
             localStorage.setItem('spreadsheetId', spreadsheetId);
             
-            showSheetsStatus('success', '✓ Auto-sync enabled! Will sync daily at midnight.');
-            showMessage('success', 'Auto-sync enabled! Your data will sync to Google Sheets daily.');
+            showSheetsStatus('success', '✓ Auto-sync enabled! Will sync daily.');
+            showMessage('success', 'Auto-sync enabled!');
         }
         
-        // Show sheets status message
         function showSheetsStatus(type, msg) {
             const statusDiv = document.getElementById('sheetsStatus');
             statusDiv.style.display = 'block';
