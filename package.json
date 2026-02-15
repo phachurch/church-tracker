@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Serverless backend for PHA Church contribution tracker",
   "dependencies": {
-    "plaid": "^15.0.0"
+    "plaid": "^15.0.0",
+    "googleapis": "^118.0.0"
   }
 }
