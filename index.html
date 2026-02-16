@@ -455,7 +455,7 @@
             try {
                 showMessage('info', 'Connecting to Plaid...');
                 
-                const response = await fetch('/.netlify/functions/plaid-link', {
+                const response = await fetch('/api/plaid-link', {
                     method: 'POST'
                 });
                 
@@ -464,7 +464,7 @@
                 const handler = Plaid.create({
                     token: link_token,
                     onSuccess: async (public_token) => {
-                        const exchangeRes = await fetch('/.netlify/functions/plaid-exchange', {
+                        const exchangeRes = await fetch('/api/plaid-exchange', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ public_token })
@@ -504,7 +504,7 @@
                 const endDate = new Date().toISOString().split('T')[0];
                 const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                 
-                const response = await fetch('/.netlify/functions/plaid-transactions', {
+                const response = await fetch('/api/plaid-transactions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -566,7 +566,7 @@
                 const endDate = new Date().toISOString().split('T')[0];
                 const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                 
-                const response = await fetch('/.netlify/functions/tithly-sync', {
+                const response = await fetch('/api/tithly-sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -829,7 +829,7 @@
             try {
                 showSheetsStatus('info', 'Syncing to Google Sheets...');
                 
-                const response = await fetch('/.netlify/functions/sheets-update', {
+                const response = await fetch('/api/sheets-update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
