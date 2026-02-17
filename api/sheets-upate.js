@@ -3,7 +3,7 @@
 
 const { google } = require('googleapis');
 
-exports.handler = async (event, context) => {
+module.exports = async (req, res) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
